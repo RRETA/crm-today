@@ -1,0 +1,12 @@
+from django.db import models
+
+
+class TenantAwareModel(models.Model):
+    """Modelo base para toda entidad de negocio: aislamiento por tenant + timestamps."""
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
