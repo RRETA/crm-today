@@ -1,6 +1,7 @@
 from datetime import timedelta
 from pathlib import Path
 
+import dj_database_url
 from decouple import Csv, config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -33,6 +34,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -62,18 +64,22 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+# En Render/Supabase se define DATABASE_URL (connection string de Postgres).
+# En desarrollo local con docker-compose se arma a partir de las variables DB_*.
+_default_db_url = "postgres://{user}:{password}@{host}:{port}/{name}".format(
+    user=config("DB_USER", default="crm"),
+    password=config("DB_PASSWORD", default="crm"),
+    host=config("DB_HOST", default="db"),
+    port=config("DB_PORT", default="5432"),
+    name=config("DB_NAME", default="crm"),
+)
+
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": config("DB_NAME", default="crm"),
-        "USER": config("DB_USER", default="crm"),
-        "PASSWORD": config("DB_PASSWORD", default="crm"),
-        "HOST": config("DB_HOST", default="db"),
-        "PORT": config("DB_PORT", default="3306"),
-        "OPTIONS": {
-            "charset": "utf8mb4",
-        },
-    }
+    "default": dj_database_url.config(
+        default=_default_db_url,
+        conn_max_age=600,
+        ssl_require=config("DB_SSL_REQUIRE", default=False, cast=bool),
+    )
 }
 
 AUTH_USER_MODEL = "users.User"
@@ -92,6 +98,10 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -122,3 +132,14 @@ CORS_ALLOWED_ORIGINS = config(
     default="http://localhost:5173,http://localhost:3000",
     cast=Csv(),
 )
+# Los preview deployments de Vercel usan subdominios dinámicos (*.vercel.app).
+CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\.vercel\.app$"]
+
+CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
+
+# Render (y la mayoría de PaaS) terminan TLS en un proxy y reenvían por HTTP interno.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+if not DEBUG:
+    SECURE_SSL_REDIRECT = config("DJANGO_SECURE_SSL_REDIRECT", default=True, cast=bool)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
